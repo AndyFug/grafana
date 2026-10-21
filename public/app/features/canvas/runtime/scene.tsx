@@ -155,6 +155,7 @@ export class Scene {
     const tooltipMode = tooltip?.mode ?? TooltipDisplayMode.Single;
     const tooltipDisableForOneClick = tooltip?.disableForOneClick ?? false;
 
+    this.root?.dispose();
     this.root = new RootElement(
       root ?? {
         type: 'frame',
@@ -227,14 +228,15 @@ export class Scene {
     this.style = { width, height };
 
     if (config.featureToggles.canvasPanelPanZoom) {
+      this.root.updateSize();
       this.updateConnectionsSize();
-      this.fitContent(this, this.zoomToContent!);
 
       // TODO: This is a workaround to apply styles to the elements after the size update.
       // It's a good to go approach used by movable creator, but maybe we can find a better way.
       this.root.elements.forEach((el) => {
         el.applyLayoutStylesToDiv(false);
       });
+      this.fitContent(this, this.zoomToContent!);
       // TODO: This is a workaround to apply styles to the elements after the size update.
       // Remove this after dealing with the connection anchors stacking context issue.
       if (this.connections.connectionAnchorDiv) {
@@ -243,10 +245,20 @@ export class Scene {
     }
   }
 
+  getLogicalSize() {
+    return this.root.getLogicalSize();
+  }
+
+  onRootSizeChanged = () => {
+    this.root.elements.forEach((element) => element.applyLayoutStylesToDiv(false));
+    this.updateConnectionsSize();
+    this.fitContent(this, Boolean(this.zoomToContent));
+  };
+
   updateConnectionsSize() {
     const svgConnections = this.connections.connectionsSVG;
 
-    if (svgConnections) {
+    if (svgConnections && this.infiniteViewer) {
       const scale = this.infiniteViewer!.getZoom();
       // NOTE: sometimes getScrollLeft and getScrollTop return NaN,
       // so we use || 0 to ensure we have a valid number
@@ -362,7 +374,11 @@ export class Scene {
   fitContent = (scene: Scene, zoomToContent: boolean) => {
     const { root, viewerDiv, infiniteViewer } = scene;
     if (zoomToContent && root.div && infiniteViewer && viewerDiv) {
-      const dimentions = calculateZoomToFitScale(Array.from(root.div.children), viewerDiv);
+      const elements = Array.from(root.div.children);
+      if (root.hasIntrinsicBackgroundDimensions()) {
+        elements.unshift(root.div);
+      }
+      const dimentions = calculateZoomToFitScale(elements, viewerDiv);
       const { scale, centerX, centerY } = dimentions;
       infiniteViewer.setZoom(scale);
       infiniteViewer.scrollTo(centerX, centerY);

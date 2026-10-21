@@ -263,7 +263,9 @@ export class ElementState implements LayerElement {
     }
 
     const scene = this.getScene();
-    const { width: sceneWidth, height: sceneHeight } = scene ?? {};
+    const { width: sceneWidth, height: sceneHeight } = this.parent?.isRoot()
+      ? (scene?.getLogicalSize() ?? {})
+      : (scene ?? {});
 
     const { constraint } = this.options;
     const { vertical, horizontal } = constraint ?? {};
@@ -536,6 +538,7 @@ export class ElementState implements LayerElement {
 
   setPlacementFromConstraint2(elementContainer?: DOMRect, parentContainer?: DOMRect, transformScale = 1) {
     const scene = this.getScene()!;
+    const { width: sceneWidth, height: sceneHeight } = this.parent?.isRoot() ? scene.getLogicalSize() : scene;
     const { constraint } = this.options;
     const { vertical, horizontal } = constraint ?? {};
 
@@ -550,9 +553,9 @@ export class ElementState implements LayerElement {
     }
 
     const relativeTop = Math.round(elementRect.top);
-    const relativeBottom = Math.round(scene.height - elementRect.top - elementRect.height);
+    const relativeBottom = Math.round(sceneHeight - elementRect.top - elementRect.height);
     const relativeLeft = Math.round(elementRect.left);
-    const relativeRight = Math.round(scene.width - elementRect.left - elementRect.width);
+    const relativeRight = Math.round(sceneWidth - elementRect.left - elementRect.width);
 
     const placement: Placement = {};
 
@@ -578,7 +581,7 @@ export class ElementState implements LayerElement {
         break;
       case VerticalConstraint.Center:
         const elementCenter = elementContainer ? relativeTop + height / 2 : 0;
-        const parentCenter = scene.height / 2; // Use scene height instead of scaled viewport height
+        const parentCenter = sceneHeight / 2;
         const distanceFromCenter = parentCenter - elementCenter;
         placement.top = distanceFromCenter;
         placement.height = height;
@@ -604,7 +607,7 @@ export class ElementState implements LayerElement {
         break;
       case HorizontalConstraint.Center:
         const elementCenter = elementContainer ? relativeLeft + width / 2 : 0;
-        const parentCenter = scene.width / 2; // Use scene width instead of scaled viewport width
+        const parentCenter = sceneWidth / 2;
         const distanceFromCenter = parentCenter - elementCenter;
         placement.left = distanceFromCenter;
         placement.width = width;

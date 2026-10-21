@@ -17,16 +17,22 @@ import {
   toDataFrame,
 } from '@grafana/data';
 import { config } from '@grafana/runtime';
-import { TooltipDisplayMode } from '@grafana/schema';
+import { ResourceDimensionMode, TooltipDisplayMode } from '@grafana/schema';
 import { mockComboboxRect } from '@grafana/test-utils';
 import { PanelContextProvider } from '@grafana/ui';
+import { type CanvasFrameOptions } from 'app/features/canvas/frame';
 import { Scene } from 'app/features/canvas/runtime/scene';
 import * as sceneAbleManagement from 'app/features/canvas/runtime/sceneAbleManagement';
 import { getDashboardSrv } from 'app/features/dashboard/services/DashboardSrv';
 import { type DashboardModel } from 'app/features/dashboard/state/DashboardModel';
 import { CanvasPanel } from 'app/plugins/panel/canvas/CanvasPanel';
 import { CONNECTION_ANCHOR_DIV_ID } from 'app/plugins/panel/canvas/components/connections/ConnectionAnchors';
-import { HorizontalConstraint, type Options, VerticalConstraint } from 'app/plugins/panel/canvas/panelcfg.gen';
+import {
+  BackgroundImageSize,
+  HorizontalConstraint,
+  type Options,
+  VerticalConstraint,
+} from 'app/plugins/panel/canvas/panelcfg.gen';
 
 const theme = createTheme();
 
@@ -634,17 +640,24 @@ describe('Canvas', () => {
   };
   const setUpWithPanelContext = (
     propsOverrides?: Partial<PanelProps<Options>>
-  ): ReturnType<typeof render> & { eventBus: EventBusSrv } => {
+  ): ReturnType<typeof render> & { eventBus: EventBusSrv; getScene: () => Scene | undefined } => {
     const eventBus = new EventBusSrv();
+    let scene: Scene | undefined;
     const PanelContextWrapper = ({ children }: { children: React.ReactNode }) => {
       const [instanceState, setInstanceState] = React.useState<unknown>();
+      const onInstanceStateChange = (state: unknown) => {
+        setInstanceState(state);
+        if (state && typeof state === 'object' && 'scene' in state && state.scene instanceof Scene) {
+          scene = state.scene;
+        }
+      };
       return (
         <PanelContextProvider
           value={{
             eventsScope: 'canvas-panel-integration',
             eventBus,
             instanceState,
-            onInstanceStateChange: setInstanceState,
+            onInstanceStateChange,
           }}
         >
           {children}
@@ -653,6 +666,7 @@ describe('Canvas', () => {
     };
     return Object.assign(render(canvasPanelElement(propsOverrides, eventBus), { wrapper: PanelContextWrapper }), {
       eventBus,
+      getScene: () => scene,
     });
   };
 
@@ -811,6 +825,66 @@ describe('Canvas', () => {
 
       expect(getCanvasPanZoomContainer()).toHaveStyle('transform-origin: 0 0;');
       expect(getCanvasPanZoomContainer()).toHaveStyle('transform: translate3d(300px, 300px, 0px) scale(2, 2)');
+    });
+
+    it('sizes and fits an Original root background using its intrinsic dimensions', async () => {
+      const image = new Image();
+      const imageSpy = jest.spyOn(global, 'Image').mockImplementation(() => image);
+      const calculateZoomToFitScaleSpy = jest.spyOn(sceneAbleManagement, 'calculateZoomToFitScale').mockReturnValue({
+        scale: 0.25,
+        centerX: 0,
+        centerY: 0,
+      });
+      const rootOptions: CanvasFrameOptions = {
+        ...defaultOptions.root,
+        elements: defaultOptions.root.elements.map((element) => ({
+          ...element,
+          constraint: { ...element.constraint },
+          placement: { ...element.placement },
+        })),
+        background: {
+          image: { mode: ResourceDimensionMode.Fixed, fixed: 'map.png' },
+          size: BackgroundImageSize.Original,
+        },
+      };
+      const options = getOptions({
+        panZoom: true,
+        zoomToContent: true,
+        root: rootOptions,
+      });
+
+      const { getScene } = setUpWithPanelContext({ options });
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+      const root = getCanvasPanZoomContainer().querySelector<HTMLElement>('[style*="background-image"]');
+      Object.defineProperties(image, {
+        naturalWidth: { value: 2646 },
+        naturalHeight: { value: 1614 },
+      });
+
+      act(() => image.onload?.(new Event('load')));
+
+      expect(root).toBeInTheDocument();
+      expect(root).toHaveStyle({ width: '2646px', height: '1614px' });
+      expect(calculateZoomToFitScaleSpy).toHaveBeenLastCalledWith(
+        expect.arrayContaining([root]),
+        expect.any(HTMLDivElement)
+      );
+
+      const scene = getScene();
+      const element = scene?.root.elements[0];
+      if (!element) {
+        throw new Error('Expected the Canvas element to be available');
+      }
+      element.options.constraint = {
+        horizontal: HorizontalConstraint.Right,
+        vertical: VerticalConstraint.Bottom,
+      };
+      jest.spyOn(element, 'getTopLeftValues').mockReturnValue({ left: 2246, top: 1574, width: 400, height: 40 });
+
+      act(() => element.setPlacementFromConstraint2());
+
+      expect(element.options.placement).toMatchObject({ right: 0, bottom: 0 });
+      imageSpy.mockRestore();
     });
   });
 

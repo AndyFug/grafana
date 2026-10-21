@@ -600,6 +600,10 @@ export function calculateZoomToFitScale(elements: Element[], container: HTMLDivE
   const containerWidth = containerRect.width;
   const containerHeight = containerRect.height;
 
+  if (bounds.width <= 0 || bounds.height <= 0 || containerWidth <= 0 || containerHeight <= 0) {
+    return { scale: 1, centerX: 0, centerY: 0 };
+  }
+
   const paddedWidth = containerWidth * (1 - 2 * paddingRatio);
   const paddedHeight = containerHeight * (1 - 2 * paddingRatio);
 
@@ -607,7 +611,7 @@ export function calculateZoomToFitScale(elements: Element[], container: HTMLDivE
   const scaleY = paddedHeight / bounds.height;
 
   // Use the smaller one to fit both horizontally and vertically
-  const scale = Math.min(scaleX, scaleY);
+  const scale = Math.min(Math.max(Math.min(scaleX, scaleY), ZOOM_RANGE[0]), ZOOM_RANGE[1]);
 
   // calculate value to move to center
   const centerX = (bounds.centerX * scale - containerWidth / 2) / scale;
@@ -638,6 +642,10 @@ export function calculateGroupBoundingBox(elements: Element[]) {
     const width = parseFloat(style.width);
     const height = parseFloat(style.height);
 
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+      continue;
+    }
+
     const left = tx;
     const top = ty;
     const right = tx + width;
@@ -647,6 +655,10 @@ export function calculateGroupBoundingBox(elements: Element[]) {
     minY = Math.min(minY, top);
     maxX = Math.max(maxX, right);
     maxY = Math.max(maxY, bottom);
+  }
+
+  if (!Number.isFinite(minX)) {
+    return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, centerX: 0, centerY: 0 };
   }
 
   return {

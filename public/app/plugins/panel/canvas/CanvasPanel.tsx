@@ -183,6 +183,7 @@ export class CanvasPanel extends Component<Props, State> {
   }
 
   componentWillUnmount() {
+    this.scene.root.dispose();
     this.scene.subscription.unsubscribe();
     this.subs.unsubscribe();
     isInlineEditOpen = false;
